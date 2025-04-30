@@ -49,7 +49,165 @@ spring-petclinic-infra/
 ```
 
 ---
+## file-setup.py
 
+```python
+import os
+
+# Define base directory
+base_dir = "/home/lilia/VIDEOS/spring-petclinic-infra"
+
+# File paths and contents
+files = {
+    "terraform/ec2/main.tf": """
+provider "aws" {
+  region = "us-east-1"
+}
+
+resource "aws_instance" "devops" {
+  ami           = "ami-0c02fb55956c7d316"
+  instance_type = "t2.micro"
+  key_name      = "your-keypair-name"
+
+  tags = {
+    Name = "DevOps-Jump-Host"
+  }
+
+  vpc_security_group_ids = ["sg-xxxxxxxx"]
+}
+""",
+    "terraform/eks/main.tf": """
+module "eks" {
+  source          = "terraform-aws-modules/eks/aws"
+  cluster_name    = "petclinic-eks"
+  cluster_version = "1.29"
+  subnets         = module.vpc.public_subnets
+  vpc_id          = module.vpc.vpc_id
+
+  manage_aws_auth = true
+  node_groups = {
+    default = {
+      desired_capacity = 2
+      max_capacity     = 3
+      min_capacity     = 1
+
+      instance_types = ["t3.medium"]
+    }
+  }
+}
+""",
+    "terraform/eks/variables.tf": """
+variable "region" {
+  default = "us-east-1"
+}
+""",
+    "terraform/eks/outputs.tf": """
+output "cluster_endpoint" {
+  value = module.eks.cluster_endpoint
+}
+""",
+    "terraform/eks/provider.tf": """
+provider "aws" {
+  region = "us-east-1"
+}
+""",
+    "scripts/setup-devops.sh": """
+#!/bin/bash
+sudo apt-get update -y
+sudo apt-get upgrade -y
+sudo apt install openjdk-17-jdk openjdk-17-jre -y
+java --version
+
+sudo apt update -y
+sudo apt install maven -y
+mvn -version
+
+sudo apt-get install ca-certificates curl gnupg -y
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=\\"$(dpkg --print-architecture)\\" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \\
+  \\"$(. /etc/os-release && echo \\"$VERSION_CODENAME\\")\\" stable" | \\
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt update -y
+sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
+docker --version
+
+apt install python3.10-venv -y
+apt install python3-pip -y
+
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+sudo chmod +x kubectl
+mkdir -p ~/.local/bin
+mv ./kubectl ~/.local/bin/kubectl
+kubectl version --client
+
+wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt update && sudo apt install terraform -y
+
+wget https://github.com/digitalocean/doctl/releases/download/v1.94.0/doctl-1.94.0-linux-amd64.tar.gz
+tar xf doctl-1.94.0-linux-amd64.tar.gz
+sudo mv doctl /usr/local/bin
+""",
+    "docker/Dockerfile": """
+FROM eclipse-temurin:17-jdk-jammy
+
+WORKDIR /app
+COPY target/spring-petclinic-3.1.0-SNAPSHOT.jar /app
+EXPOSE 8080
+CMD ["java", "-jar", "spring-petclinic-3.1.0-SNAPSHOT.jar"]
+""",
+    "k8s/deployment.yaml": """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: petclinic
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: petclinic
+  template:
+    metadata:
+      labels:
+        app: petclinic
+    spec:
+      containers:
+        - name: petclinic
+          image: laly9999/spring-petclinic:v1
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: petclinic-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: petclinic
+  ports:
+    - port: 80
+      targetPort: 8080
+"""
+}
+
+# Create files
+for relative_path, content in files.items():
+    file_path = os.path.join(base_dir, relative_path)
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    with open(file_path, "w") as f:
+        f.write(content.strip())
+
+import ace_tools as tools; tools.display_dataframe_to_user(name="Project File Structure", dataframe=None)
+"✅ All files have been created in /home/lilia/VIDEOS/spring-petclinic-infra/"
+
+```
+
+---
 ## ⚙️ Step-by-Step Instructions
 
 ### 1️⃣ Provision EC2 Jump Host (Ubuntu 22.04)
